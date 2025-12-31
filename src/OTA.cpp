@@ -14,6 +14,9 @@
 DBG_REGISTER_MODULE(__FILE__);
 
 // ============================================================
+// Forward decls (used by early helpers)
+static void onlineFail(const String& msg);
+
 struct HttpBodyStream {
   std::unique_ptr<WiFiClientSecure> client;
   int      status = -1;
@@ -60,24 +63,25 @@ static bool httpGetStreamFollowRedirect(const String& url, HttpBodyStream& out, 
       return false;
     }
 
-    std::unique_ptr<WiFiClientSecure> cli(new WiFiClientSecure());
-    cli->setInsecure();
+    // NOTE: don't name this variable `cli` because Arduino defines a `cli()` macro.
+    std::unique_ptr<WiFiClientSecure> wcli(new WiFiClientSecure());
+    wcli->setInsecure();
 
-    if (!cli->connect(host.c_str(), 443)) {
+    if (!wcli->connect(host.c_str(), 443)) {
       onlineFail(String("HTTPS connect failed: ") + host);
       return false;
     }
 
     // Request
-    cli->print(String("GET ") + path + " HTTP/1.1\r\n");
-    cli->print(String("Host: ") + host + "\r\n");
-    cli->print("User-Agent: K2UartBriage\r\n");
-    cli->print("Accept: application/octet-stream\r\n");
-    cli->print("Connection: close\r\n\r\n");
+    wcli->print(String("GET ") + path + " HTTP/1.1\r\n");
+    wcli->print(String("Host: ") + host + "\r\n");
+    wcli->print("User-Agent: K2UartBriage\r\n");
+    wcli->print("Accept: application/octet-stream\r\n");
+    wcli->print("Connection: close\r\n\r\n");
 
     // Status line
     String line;
-    if (!readLine(*cli, line)) {
+    if (!readLine(*wcli, line)) {
       onlineFail("HTTP read timeout");
       return false;
     }
@@ -91,7 +95,7 @@ static bool httpGetStreamFollowRedirect(const String& url, HttpBodyStream& out, 
     String location;
 
     // Headers
-    while (readLine(*cli, line)) {
+    while (readLine(*wcli, line)) {
       if (line.length() == 0) break;
       String l = line;
       l.toLowerCase();
@@ -116,7 +120,7 @@ static bool httpGetStreamFollowRedirect(const String& url, HttpBodyStream& out, 
       continue;
     }
 
-    out.client = std::move(cli);
+    out.client = std::move(wcli);
     out.status = status;
     out.contentLength = clen;
     return true;
