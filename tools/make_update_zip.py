@@ -4,21 +4,19 @@
 Despite the .zip extension, this is a lightweight streaming container so
 the ESP32 can flash firmware + LittleFS without needing a zip/unzip library.
 
-If you run this script with no args, it will look for:
-  firmware.bin
-  littlefs.bin
-in the SAME folder as this script.
-
 Layout (little-endian):
   8 bytes  magic   = b"K2UPD1\0\0"
   4 bytes  fw_size = uint32
   4 bytes  fs_size = uint32
   fw_size  bytes   firmware image (the app .bin)
-  fs_size  bytes   littlefs image (.bin produced by buildfs)
+  fs_size  bytes   littlefs image (.bin produced by buildfs/uploadfs)
 
 Usage:
+  # simplest: put firmware.bin and littlefs.bin next to this script, then:
+  python tools/make_update_zip.py
+
+  # or pass explicit paths:
   python tools/make_update_zip.py firmware.bin littlefs.bin update.zip
-  python tools/make_update_zip.py            # uses ./tools/firmware.bin and ./tools/littlefs.bin
 """
 
 from __future__ import annotations
@@ -40,7 +38,6 @@ def main() -> int:
 
     fw_path = args.firmware or os.path.join(script_dir, "firmware.bin")
     fs_path = args.littlefs or os.path.join(script_dir, "littlefs.bin")
-    out_path = args.output
 
     if not os.path.isfile(fw_path):
         raise SystemExit(f"Firmware not found: {fw_path}")
@@ -60,6 +57,7 @@ def main() -> int:
 
     header = MAGIC + struct.pack("<II", len(fw), len(fs))
 
+    out_path = args.output
     with open(out_path, "wb") as f:
         f.write(header)
         f.write(fw)

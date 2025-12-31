@@ -13,6 +13,119 @@
 
 DBG_REGISTER_MODULE(__FILE__);
 
+// ============================================================
+struct HttpBodyStream {
+  std::unique_ptr<WiFiClientSecure> client;
+  int      status = -1;
+  int32_t  contentLength = -1;
+};
+
+static bool parseUrl(const String& url, String& host, String& path) {
+  host = "";
+  path = "/";
+  if (!url.startsWith("https://")) return false;
+  int p = url.indexOf('/', 8);
+  if (p < 0) {
+    host = url.substring(8);
+    path = "/";
+  } else {
+    host = url.substring(8, p);
+    path = url.substring(p);
+  }
+  return host.length() > 0;
+}
+
+static bool readLine(Client& c, String& out, uint32_t timeoutMs=8000) {
+  out = "";
+  uint32_t start = millis();
+  while (millis() - start < timeoutMs) {
+    while (c.available()) {
+      char ch = (char)c.read();
+      if (ch == '\r') continue;
+      if (ch == '\n') return true;
+      out += ch;
+      if (out.length() > 2048) return true;
+    }
+    delay(1);
+  }
+  return false;
+}
+
+static bool httpGetStreamFollowRedirect(const String& url, HttpBodyStream& out, int maxRedirect=5) {
+  String cur = url;
+  for (int i=0;i<=maxRedirect;i++) {
+    String host, path;
+    if (!parseUrl(cur, host, path)) {
+      onlineFail("Bad asset URL");
+      return false;
+    }
+
+    std::unique_ptr<WiFiClientSecure> cli(new WiFiClientSecure());
+    cli->setInsecure();
+
+    if (!cli->connect(host.c_str(), 443)) {
+      onlineFail(String("HTTPS connect failed: ") + host);
+      return false;
+    }
+
+    // Request
+    cli->print(String("GET ") + path + " HTTP/1.1\r\n");
+    cli->print(String("Host: ") + host + "\r\n");
+    cli->print("User-Agent: K2UartBriage\r\n");
+    cli->print("Accept: application/octet-stream\r\n");
+    cli->print("Connection: close\r\n\r\n");
+
+    // Status line
+    String line;
+    if (!readLine(*cli, line)) {
+      onlineFail("HTTP read timeout");
+      return false;
+    }
+    int status = -1;
+    if (line.startsWith("HTTP/")) {
+      int sp = line.indexOf(' ');
+      if (sp > 0) status = line.substring(sp+1).toInt();
+    }
+
+    int32_t clen = -1;
+    String location;
+
+    // Headers
+    while (readLine(*cli, line)) {
+      if (line.length() == 0) break;
+      String l = line;
+      l.toLowerCase();
+      if (l.startsWith("content-length:")) {
+        clen = line.substring(line.indexOf(':')+1).toInt();
+      } else if (l.startsWith("location:")) {
+        location = line.substring(line.indexOf(':')+1);
+        location.trim();
+      }
+    }
+
+    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+      if (location.length() == 0) {
+        onlineFail("Redirect with no Location");
+        return false;
+      }
+      // Handle relative redirects
+      if (location.startsWith("/")) {
+        location = String("https://") + host + location;
+      }
+      cur = location;
+      continue;
+    }
+
+    out.client = std::move(cli);
+    out.status = status;
+    out.contentLength = clen;
+    return true;
+  }
+  onlineFail("Too many redirects");
+  return false;
+}
+
+
 #if defined(ESP32)
   #include <esp_ota_ops.h>
   #include <esp_system.h>
@@ -49,6 +162,9 @@ struct OnlineJob {
   String url;
   uint32_t size = 0;
 };
+
+
+static bool flashUpdateZipFromFile(const String& path);
 
 static void onlineReset() {
   g_onlineActive = false;
@@ -911,115 +1027,5 @@ static bool flashUpdateZipFromFile(const String& path) {
 // ============================================================
 // Minimal HTTPS GET with redirect following (no HTTPClient begin issues)
 // Returns connected client positioned at body.
-// ============================================================
-struct HttpBodyStream {
-  std::unique_ptr<WiFiClientSecure> client;
-  int      status = -1;
-  int32_t  contentLength = -1;
-};
 
-static bool parseUrl(const String& url, String& host, String& path) {
-  host = "";
-  path = "/";
-  if (!url.startsWith("https://")) return false;
-  int p = url.indexOf('/', 8);
-  if (p < 0) {
-    host = url.substring(8);
-    path = "/";
-  } else {
-    host = url.substring(8, p);
-    path = url.substring(p);
-  }
-  return host.length() > 0;
-}
-
-static bool readLine(Client& c, String& out, uint32_t timeoutMs=8000) {
-  out = "";
-  uint32_t start = millis();
-  while (millis() - start < timeoutMs) {
-    while (c.available()) {
-      char ch = (char)c.read();
-      if (ch == '\r') continue;
-      if (ch == '\n') return true;
-      out += ch;
-      if (out.length() > 2048) return true;
-    }
-    delay(1);
-  }
-  return false;
-}
-
-static bool httpGetStreamFollowRedirect(const String& url, HttpBodyStream& out, int maxRedirect=5) {
-  String cur = url;
-  for (int i=0;i<=maxRedirect;i++) {
-    String host, path;
-    if (!parseUrl(cur, host, path)) {
-      onlineFail("Bad asset URL");
-      return false;
-    }
-
-    auto cli = std::make_unique<WiFiClientSecure>();
-    cli->setInsecure();
-
-    if (!cli->connect(host.c_str(), 443)) {
-      onlineFail(String("HTTPS connect failed: ") + host);
-      return false;
-    }
-
-    // Request
-    cli->print(String("GET ") + path + " HTTP/1.1\r\n");
-    cli->print(String("Host: ") + host + "\r\n");
-    cli->print("User-Agent: K2UartBriage\r\n");
-    cli->print("Accept: application/octet-stream\r\n");
-    cli->print("Connection: close\r\n\r\n");
-
-    // Status line
-    String line;
-    if (!readLine(*cli, line)) {
-      onlineFail("HTTP read timeout");
-      return false;
-    }
-    int status = -1;
-    if (line.startsWith("HTTP/")) {
-      int sp = line.indexOf(' ');
-      if (sp > 0) status = line.substring(sp+1).toInt();
-    }
-
-    int32_t clen = -1;
-    String location;
-
-    // Headers
-    while (readLine(*cli, line)) {
-      if (line.length() == 0) break;
-      String l = line;
-      l.toLowerCase();
-      if (l.startsWith("content-length:")) {
-        clen = line.substring(line.indexOf(':')+1).toInt();
-      } else if (l.startsWith("location:")) {
-        location = line.substring(line.indexOf(':')+1);
-        location.trim();
-      }
-    }
-
-    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
-      if (location.length() == 0) {
-        onlineFail("Redirect with no Location");
-        return false;
-      }
-      // Handle relative redirects
-      if (location.startsWith("/")) {
-        location = String("https://") + host + location;
-      }
-      cur = location;
-      continue;
-    }
-
-    out.client = std::move(cli);
-    out.status = status;
-    out.contentLength = clen;
-    return true;
-  }
-  onlineFail("Too many redirects");
-  return false;
-}
 
