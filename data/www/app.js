@@ -107,6 +107,10 @@ async function refresh(){
   const r = await fetch('/api/status', {cache:'no-store'});
   const j = await r.json();
 
+  // Header app info (always visible)
+  if ($('appName') && j.app && j.app.name) $('appName').textContent = String(j.app.name);
+  if ($('appVer') && j.app && j.app.version) $('appVer').textContent = `v${j.app.version}`;
+
   if ($('status')){
     $('status').textContent =
       `mode=${j.wifi.mode} ip=${j.wifi.ip} ssid=${j.wifi.ssid||'-'}  baud=${j.uart.baud} auto=${j.uart.auto}`;
@@ -304,3 +308,258 @@ function initConsolePage(){
     }
   }
 }
+
+// ===============================
+// OTA Page (LittleFS: /www/ota.html)
+// Endpoint: POST /api/ota/upload (multipart)
+// ===============================
+
+function _otaLog(msg){
+  const el = $('log');
+  if (!el) return;
+  el.textContent += (String(msg).endsWith('\n') ? String(msg) : (String(msg) + "\n"));
+  el.scrollTop = el.scrollHeight;
+}
+
+function _otaSetPct(p){
+  p = Math.max(0, Math.min(100, Math.floor(Number(p)||0)));
+  const fill = $('fill');
+  const pct = $('pct');
+  if (fill) fill.style.width = p + '%';
+  if (pct) pct.textContent = p + '%';
+}
+
+function initOtaPage(){
+  // Host label
+  if ($('hostName')) $('hostName').textContent = location.host;
+
+  // Status pill (lightweight)
+  const st = $('st');
+  if (st){
+    st.classList.remove('bad');
+    st.classList.add('ok');
+    st.innerHTML = '<div class="k2-dot"></div><span>ready</span>';
+  }
+
+  // Reset
+  _otaSetPct(0);
+  const log = $('log');
+  if (log) log.textContent = '';
+
+  // Optional: show current build info if available
+  fetch('/api/status', {cache:'no-store'})
+    .then(r=>r.json())
+    .then(j=>{
+      _otaLog(`[status] ip=${j?.wifi?.ip || '-'} ssid=${j?.wifi?.ssid || '-'}\n`);
+    })
+    .catch(()=>{});
+}
+
+// ============================================
+// Online update (GitHub Releases)
+// ============================================
+let _ghChecked = null; // {tag,size}
+let _ghPollTimer = null;
+
+function _ghSetLatest(text){
+  const el = $('ghLatest');
+  if (el) el.textContent = text;
+}
+
+async function checkGithubUpdate(){
+  _ghSetLatest('checking...');
+  _otaLog('[github] checking latest release...\n');
+  try{
+    const r = await fetch('/api/ota/github_check', {cache:'no-store'});
+    const j = await r.json();
+    if (!r.ok || !j.ok){
+      _ghChecked = null;
+      const msg = (j && j.msg) ? j.msg : ('HTTP ' + r.status);
+      _ghSetLatest('error');
+      _otaLog('[github] check failed: ' + msg + '\n');
+      return;
+    }
+    _ghChecked = { tag: j.tag || 'latest', size: j.size || 0 };
+    _ghSetLatest((_ghChecked.tag) + ' (' + (_ghChecked.size||0) + ' bytes)');
+    _otaLog('[github] latest: ' + _ghChecked.tag + '\n');
+  }catch(e){
+    _ghChecked = null;
+    _ghSetLatest('error');
+    _otaLog('[github] check error: ' + (e?.message || e) + '\n');
+  }
+}
+
+async function confirmGithubUpdate(){
+  if (!_ghChecked){
+    await checkGithubUpdate();
+    if (!_ghChecked) return;
+  }
+  const ok = confirm('This will update firmware AND LittleFS from GitHub. Continue?');
+  if (!ok) return;
+  startGithubUpdate();
+}
+
+async function startGithubUpdate(){
+  _otaSetPct(0);
+  _otaLog('[github] starting online update...\n');
+  try{
+    const r = await fetch('/api/ota/github_update', {method:'POST'});
+    const t = await r.text();
+    if (!r.ok){
+      _otaLog('[github] start failed: ' + t + '\n');
+      return;
+    }
+    _otaLog('[github] ' + t + '\n');
+    // Poll progress
+    if (_ghPollTimer) clearInterval(_ghPollTimer);
+    _ghPollTimer = setInterval(pollGithubProgress, 700);
+  }catch(e){
+    _otaLog('[github] start error: ' + (e?.message || e) + '\n');
+  }
+}
+
+async function pollGithubProgress(){
+  try{
+    const r = await fetch('/api/ota/github_progress', {cache:'no-store'});
+    const j = await r.json();
+    const pct = (j && typeof j.pct === 'number') ? j.pct : 0;
+    _otaSetPct(pct);
+    const phase = j?.phase || '';
+    const msg = j?.msg || '';
+    if (phase){
+      _otaLog('[github] phase=' + phase + (msg ? (', msg=' + msg) : '') + '\n');
+    }
+    if (!j?.active && (phase === 'done' || phase === 'error')){
+      clearInterval(_ghPollTimer);
+      _ghPollTimer = null;
+    }
+  }catch(_e){
+    // ignore intermittent poll errors
+  }
+}
+
+async function doUpload() {
+  const f = $('fw');
+  const file = f && f.files && f.files[0];
+  
+  if (file && (file.name||"").toLowerCase() === "update.zip") {
+    // Resumable staged upload for dual-image container
+    otaSessionUpload(file).catch(e=>otaLog(`[error] ${e.message||e}`));
+    return;
+  }
+if (!file){
+    alert('Pick an update.zip (or .bin) file first');
+    return;
+  }
+
+  const name = String(file.name||'').toLowerCase();
+  const isZip = name.endsWith('.zip');
+  const isBin = name.endsWith('.bin');
+  if (!isZip && !isBin){
+    alert('Please select update.zip (preferred) or a firmware .bin');
+    return;
+  }
+
+  const url = isZip ? '/api/ota/updatezip' : '/api/ota/upload';
+  if (isZip) {
+    _otaLog('[info] update.zip uses a streamed dual-image container: firmware + littlefs');
+  }
+
+  const btn = $('btn');
+  if (btn) btn.disabled = true;
+  _otaLog(`[upload] ${file.name} (${fmtBytes(file.size)})`);
+  _otaSetPct(0);
+
+  // Use XHR for upload progress
+  const form = new FormData();
+  form.append('file', file, file.name);
+
+  await new Promise((resolve)=>{
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+
+    xhr.upload.onprogress = (e)=>{
+      if (e.lengthComputable){
+        const p = (e.loaded / e.total) * 100;
+        _otaSetPct(p);
+      }
+    };
+
+    xhr.onerror = ()=>{
+      _otaLog('[error] network/upload failed');
+      resolve();
+    };
+
+    xhr.onload = ()=>{
+      _otaLog(`[resp] HTTP ${xhr.status}`);
+      if (xhr.responseText) _otaLog(xhr.responseText);
+      // If success, device will reboot shortly.
+      resolve();
+    };
+
+    xhr.send(form);
+  });
+
+  if (btn) btn.disabled = false;
+}
+
+
+// ===============================
+// OTA: resumable chunked upload (update.zip container)
+// ===============================
+async function otaSessionUpload(file) {
+  const log = (m)=> otaLog(m);
+  const CHUNK = 65536;
+
+  log(`[sess] starting session (size=${file.size})...`);
+  let resp = await fetch(`/api/ota/session/start`, {
+    method: "POST",
+    headers: {"Content-Type":"application/x-www-form-urlencoded"},
+    body: `size=${encodeURIComponent(file.size)}`
+  });
+  if (!resp.ok) {
+    log(`[sess] start failed HTTP ${resp.status}`);
+    throw new Error("session start failed");
+  }
+  const s = await resp.json();
+  log(`[sess] id=${s.id} have=${s.have}/${s.total}`);
+
+  let offset = s.have || 0;
+
+  while (offset < file.size) {
+    const slice = file.slice(offset, offset + CHUNK);
+    const buf = await slice.arrayBuffer();
+
+    try {
+      const up = await fetch(`/api/ota/session/chunk?id=${encodeURIComponent(s.id)}&offset=${offset}`, {
+        method: "POST",
+        headers: {"Content-Type":"application/octet-stream"},
+        body: buf
+      });
+
+      if (!up.ok) {
+        log(`[sess] chunk HTTP ${up.status}, retrying...`);
+        await sleep(3000);
+        const st = await fetch(`/api/ota/session/status`).then(r=>r.json()).catch(()=>null);
+        if (st && st.have != null) offset = st.have;
+        continue;
+      }
+
+      offset += buf.byteLength;
+      otaSetPct(Math.floor((offset * 100) / file.size));
+    } catch (e) {
+      log(`[sess] network error, waiting...`);
+      await sleep(3000);
+      const st = await fetch(`/api/ota/session/status`).then(r=>r.json()).catch(()=>null);
+      if (st && st.have != null) offset = st.have;
+    }
+  }
+
+  log(`[sess] finalize...`);
+  const fin = await fetch(`/api/ota/session/finalize`, {method:"POST"});
+  const txt = await fin.text();
+  log(`[sess] ${txt}`);
+  if (!fin.ok) throw new Error("finalize failed");
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }

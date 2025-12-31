@@ -32,6 +32,7 @@
     <div class="k2-toprow">
       <div class="k2-brand">
         <b id="appName">K2UartBriage - OTA Update</b>
+        <span id="appVer" class="small" style="margin-left:8px;opacity:.85">v?</span>
         <span id="subTitle">UART Rescue / Firmware Utilities / Diagnostics</span>
         <span class="small" style="margin-top:4px">
           Host: <code id="hostName">...</code>
@@ -49,7 +50,7 @@
       </div>
 
       <div class="small">
-        Upload a <span class="mono">.bin</span> firmware. Progress polls <span class="mono">/api/status</span>.
+        Upload <span class="mono">update.zip</span> containing <span class="mono">firmware.bin</span> + <span class="mono">littlefs.bin</span> (streamed). Progress polls <span class="mono">/api/status</span>.
       </div>
     </div>
   </div>
@@ -57,7 +58,7 @@
   <div class="k2-wrap">
     <div class="k2-card">
       <div class="k2-row" style="margin-top:0">
-        <input id="fw" class="k2-input" type="file" accept=".bin,application/octet-stream"/>
+        <input id="fw" class="k2-input" type="file" accept=".zip,.bin,application/octet-stream"/>
         <button id="btn" class="k2-btn primary" onclick="doUpload()">Upload</button>
         <a href="/"><button class="k2-btn ghost" type="button">Back</button></a>
       </div>
@@ -66,6 +67,16 @@
       <div id="pct" class="small" style="margin-top:6px">0%</div>
 
       <pre id="log"></pre>
+
+      <hr style="border:0;border-top:1px solid var(--k2-border);margin:14px 0"/>
+
+      <div class="k2-row" style="margin-top:0">
+        <button class="k2-btn" type="button" onclick="checkGithubUpdate()">Check GitHub</button>
+        <button class="k2-btn primary" type="button" onclick="confirmGithubUpdate()">Online Update</button>
+        <div class="small" style="flex:2">
+          Latest: <span class="mono" id="ghLatest">(not checked)</span>
+        </div>
+      </div>
     </div>
   </div>
 

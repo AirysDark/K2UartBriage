@@ -473,6 +473,12 @@ void WebUi::begin(BridgeState& st) {
   web.on("/api/status", HTTP_GET, [&st](AsyncWebServerRequest* req){
     JsonDocument d;
 
+    // App identity (for Web UI header)
+    JsonObject app = d["app"].to<JsonObject>();
+    app["name"]    = APP_NAME;
+    app["version"] = APP_VERSION;
+    app["build"]   = APP_BUILD;
+
     WifiCreds c = Storage::loadWifi();
 
     JsonObject wifi = d["wifi"].to<JsonObject>();
