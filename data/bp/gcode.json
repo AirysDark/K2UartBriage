@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "format": "k2uartbriage-blueprint-gcode",
+    "version": 1,
+    "note": "Preset command lines sent to the TARGET UART (U-Boot / Linux)."
+  },
+  "groups": {
+
+    "uboot": {
+      "prompt_test": "echo UBOOT_OK",
+      "version": "version",
+      "bdinfo": "bdinfo",
+      "printenv": "printenv",
+      "printenv_board": "printenv board_id",
+      "printenv_layout": "printenv layout_json",
+
+      "mmc_list": "mmc list",
+      "mmc_dev0": "mmc dev 0",
+      "mmc_info": "mmc info",
+      "mmc_part": "part list mmc 0",
+
+      "help": "help",
+      "help_mmc": "help mmc",
+      "help_ums": "help ums",
+
+      "ums_start": "ums 0 mmc 0",
+      "reset": "reset"
+    },
+
+    "linux": {
+      "whoami": "whoami",
+      "id": "id",
+      "uname": "uname -a",
+      "ls_root": "ls -la /",
+      "df": "df -h",
+      "mounts": "mount",
+      "dmesg_tail": "dmesg | tail -n 50",
+      "reboot": "reboot"
+    },
+
+    "fel": {
+      "sunxi_list": "echo Run on PC: sunxi-fel -l",
+      "sunxi_version": "echo Run on PC: sunxi-fel version",
+      "sunxi_boot_ram": "echo Run on PC: sunxi-fel -v spl u-boot-sunxi-with-spl.bin"
+    },
+
+    "warnings": {
+      "large_write_warning": "echo WARNING: This board may NOT tolerate large single writes. Use chunked writes + verify.",
+      "verify_hint": "echo Always verify after writing. Prefer UMS (USB Mass Storage) when possible."
+    }
+
+  }
+}

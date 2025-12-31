@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "format": "k2uartbriage-blueprint-scripts",
+    "version": 1,
+    "note": "Scripts are best-effort: they just send lines with small delays."
+  },
+  "scripts": {
+    "uboot_probe": [
+      "echo [K2] uboot_probe",
+      "version",
+      "bdinfo",
+      "printenv board_id",
+      "printenv layout_json",
+      "printenv",
+      "mmc list",
+      "mmc dev 0",
+      "mmc info"
+    ],
+
+    "uboot_backup_min": [
+      "echo [K2] backup_min (reads only)",
+      "mmc dev 0",
+      "mmc info",
+      "echo TIP: Use ums 0 mmc 0 if USB-OTG works (preferred full backup)."
+    ],
+
+    "uboot_ums_start": [
+      "echo [K2] Starting UMS (USB Mass Storage) on mmc0",
+      "mmc dev 0",
+      "ums 0 mmc 0"
+    ],
+
+    "uboot_ums_stop_hint": [
+      "echo [K2] To stop UMS: reset board or unplug USB, then reboot."
+    ],
+
+    "uboot_check_fw_file": [
+      "echo [K2] Looking for /firmware.bin on SD/USB (if present)",
+      "echo NOTE: this script does not load files itself; it just reminds you.",
+      "echo Use: fatls mmc 1:1 or ext4ls mmc 1:1 depending on media/partition."
+    ],
+
+    "uboot_flash_warn": [
+      "echo [K2] FLASH WARNING",
+      "echo If this board has write-size limitations, DO NOT do huge single writes.",
+      "echo Prefer chunked writes + verify after each stage.",
+      "echo Recommended: write smaller blocks and verify."
+    ],
+
+    "linux_login_root": [
+      "root"
+    ],
+
+    "linux_probe": [
+      "echo [K2] linux_probe",
+      "uname -a",
+      "id",
+      "cat /etc/os-release || true",
+      "ls -la /",
+      "df -h || true"
+    ]
+  }
+}

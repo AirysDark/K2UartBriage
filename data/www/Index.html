@@ -1,0 +1,224 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>K2UartBriage</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+  <div class="k2-topbar">
+    <div class="k2-toprow">
+      <div class="k2-brand">
+        <b id="appName">K2UartBriage</b>
+        <span id="subTitle">UART Rescue / Firmware Utilities / Diagnostics</span>
+        <span class="small" style="margin-top:4px">
+          Host: <code id="hostName">...</code>
+        </span>
+      </div>
+
+      <div id="connPill" class="k2-pill warn" title="Wi-Fi / TCP status">
+        <div class="k2-dot"></div>
+        <span id="connText">BOOTING</span>
+      </div>
+    </div>
+
+    <div class="k2-subrow">
+      <div id="navTabs" class="k2-tabs">
+        <a class="k2-tab active" href="#rescue">UART Rescue</a>
+        <a class="k2-tab" href="#fw">Firmware Utilities</a>
+        <a class="k2-tab" href="#diag">Diagnostics</a>
+        <a class="k2-tab" href="/console">Console</a>
+      </div>
+
+      <div class="small">
+        AP default: <code id="apSsid">CK2-AP</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="k2-wrap">
+    <div class="k2-row">
+      <div class="k2-col">
+
+        <div id="rescue" class="k2-card">
+          <h3 class="k2-title">Status</h3>
+          <div class="k2-item" style="margin-top:10px">
+            <div>
+              <b>Bridge</b><br/>
+              <span class="small" id="status">Loading...</span><br/>
+              <span class="small">TCP UART: <code id="tcp"></code></span><br/>
+              <span class="small">Web Console: <code>/console</code></span>
+            </div>
+            <span class="k2-badge" id="modeBadge">MODE</span>
+          </div>
+
+          <div class="k2-divider"></div>
+
+          <h3 class="k2-title">Target Controls</h3>
+          <div class="k2-grid two">
+            <button class="k2-btn danger" onclick="doPost('/api/target/reset')">Reset Target</button>
+            <button class="k2-btn danger" onclick="doPost('/api/target/fel')">Enter FEL</button>
+          </div>
+        </div>
+
+        <div class="k2-card alt">
+          <h3 class="k2-title">Wi-Fi Setup</h3>
+          <p class="k2-sub">Change SSID/password and reboot into STA mode.</p>
+
+          <div class="k2-grid two" style="margin-top:12px">
+            <input id="ssid" class="k2-input" placeholder="Wi-Fi SSID"/>
+            <input id="pass" class="k2-input" placeholder="Wi-Fi Password" type="password"/>
+          </div>
+
+          <div class="k2-grid two">
+            <button class="k2-btn primary" onclick="saveWifi()">Save Wi-Fi + Reboot</button>
+            <button class="k2-btn danger" onclick="doPost('/api/wifi/reset')">Wi-Fi SSID Reset (forget) + Reboot</button>
+          </div>
+        </div>
+
+        <div id="fw" class="k2-card">
+          <h3 class="k2-title">U-Boot UMS</h3>
+          <p class="k2-sub">Safest backup path: exposes target eMMC as USB Mass Storage: <code>ums 0 mmc 0</code></p>
+
+          <div class="k2-item" style="margin-top:10px">
+            <div>
+              <b>UMS Status</b><br/>
+              <span class="small">Status: <span id="ubootStatus">(loading)</span></span>
+            </div>
+            <span class="k2-badge" id="umsBadge">UMS</span>
+          </div>
+
+          <div class="k2-grid two" style="margin-top:10px">
+            <button id="btnUms" class="k2-btn primary" onclick="doPost('/api/uboot/ums')">Enter U-Boot UMS Mode</button>
+            <button id="btnUmsClear" class="k2-btn danger" onclick="doPost('/api/uboot/ums/clear')">Clear UMS lock</button>
+          </div>
+
+          <div class="small mono" id="umsHelp" style="margin-top:10px"></div>
+        </div>
+
+      </div>
+
+      <div class="k2-col">
+
+        <div id="diag" class="k2-card">
+          <h3 class="k2-title">Backup / Restore</h3>
+          <p class="k2-sub">Choose A/B/C/FULL (or Custom range). For UART-only, A is fastest.</p>
+
+          <div class="k2-grid three" style="margin-top:12px">
+            <select id="bkProfile" class="k2-select"></select>
+            <input id="cstart" class="k2-input" placeholder="Custom LBA start (hex or dec)"/>
+            <input id="ccount" class="k2-input" placeholder="Custom LBA count (hex or dec)"/>
+          </div>
+
+          <div class="k2-grid two">
+            <button id="btnBkSave" class="k2-btn" onclick="saveBackupProfile()">Save Selection</button>
+            <button id="btnBkDownload" class="k2-btn" onclick="downloadBackup()">Download Backup</button>
+          </div>
+
+          <div class="k2-grid two">
+            <button id="btnBkStart" class="k2-btn primary" onclick="startBackup('uart')">Create Backup (UART raw)</button>
+            <button id="btnBkStartMeta" class="k2-btn" onclick="startBackup('meta')">Create Backup (env+meta)</button>
+          </div>
+
+          <div class="small mono" id="backupLive" style="margin-top:10px"></div>
+
+          <div class="k2-divider"></div>
+
+          <h3 class="k2-title">CK2 Key</h3>
+          <p class="k2-sub">Generate a per-device client key (encrypted). Use this for WS auth on your tools.</p>
+
+          <div class="k2-grid two" style="margin-top:10px">
+            <button id="btnCk2Gen" class="k2-btn primary" onclick="ck2Generate()">Generate CK2.key</button>
+            <button id="btnCk2Dl" class="k2-btn" onclick="ck2Download()">Download last CK2.key</button>
+          </div>
+
+          <div class="small mono" id="ck2Out" style="margin-top:10px"></div>
+
+          <div class="k2-divider"></div>
+
+          <div class="k2-grid two">
+            <input type="file" id="restoreFile" class="k2-input"/>
+            <button id="btnRestoreUpload" class="k2-btn danger" onclick="restoreUpload()">Upload Restore File</button>
+          </div>
+
+          <div class="k2-grid two">
+            <button id="btnRestoreShow" class="k2-btn" onclick="restoreShowEnv()">Show Env (preview)</button>
+            <button id="btnEnvCap" class="k2-btn" onclick="doPost('/api/uboot/printenv')">Capture printenv (safe)</button>
+          </div>
+
+          <div class="k2-grid two">
+            <button id="btnEnvText" class="k2-btn ghost" onclick="window.open('/api/uboot/printenv/text','_blank')">Open captured env</button>
+            <a href="/console"><button type="button" class="k2-btn primary">Open Web Console</button></a>
+          </div>
+
+          <div class="small mono" id="restorePreview"></div>
+          <div class="small mono" id="envCapStatus"></div>
+
+          <div class="k2-divider"></div>
+
+          <div class="k2-grid two">
+            <button id="btnRestorePlan" class="k2-btn" onclick="restorePlan()">Restore Plan (safety)</button>
+            <label class="small" style="display:flex;gap:8px;align-items:center;border:1px solid var(--k2-border-soft);border-radius:10px;padding:10px;background:rgba(15,21,29,.55)">
+              <input type="checkbox" id="restoreOverride"/> Override board_id mismatch (danger)
+            </label>
+          </div>
+
+          <div class="k2-grid two">
+            <input id="restoreAck" class="k2-input" placeholder="FULL confirm token (only if required)"/>
+            <button id="btnRestoreArm" class="k2-btn danger" onclick="restoreArm()">ARM Restore</button>
+          </div>
+
+          <div class="k2-grid two">
+            <button id="btnRestoreDisarm" class="k2-btn" onclick="restoreDisarm()">Disarm</button>
+            <button id="btnRestoreApply" class="k2-btn danger" onclick="restoreApply()">Apply (engine pending)</button>
+          </div>
+
+          <div class="k2-grid two">
+            <button id="btnRestoreVerify" class="k2-btn" onclick="restoreVerify()">Verify vs device</button>
+            <a href="/ota"><button type="button" class="k2-btn">OTA Update</button></a>
+          </div>
+
+          <div class="small mono" id="restoreStateOut" style="margin-top:10px"></div>
+          <div class="small mono" id="restorePlanOut"></div>
+        </div>
+
+        <div class="k2-card alt">
+          <h3 class="k2-title">UART Settings</h3>
+          <p class="k2-sub">Autodetect is best for unknown boards. Manual is best once you know it.</p>
+
+          <div class="k2-grid two" style="margin-top:12px">
+            <label class="small" style="display:flex;gap:10px;align-items:center;border:1px solid var(--k2-border-soft);border-radius:10px;padding:10px;background:rgba(15,21,29,.55)">
+              <input type="checkbox" id="baudAuto"/> Autodetect Baud
+            </label>
+
+            <select id="baud" class="k2-select">
+              <option>9600</option><option>19200</option><option>38400</option><option>57600</option>
+              <option>115200</option><option>230400</option><option>460800</option><option>921600</option>
+            </select>
+          </div>
+
+          <div class="k2-grid two">
+            <button class="k2-btn primary" onclick="saveUart()">Save UART</button>
+            <button class="k2-btn" onclick="doPost('/api/uart/autobaud')">Run Autodetect Now</button>
+          </div>
+
+          <div class="small" style="margin-top:10px">
+            PuTTY: connect to <code id="putty"></code> as RAW/Telnet. (Port shown above)
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    window.addEventListener('hashchange', setActiveTab);
+    loadHeaderModels().then(()=>{});
+    refresh();
+    setActiveTab();
+  </script>
+</body>
+</html>

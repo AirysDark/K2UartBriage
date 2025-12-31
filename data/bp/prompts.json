@@ -1,0 +1,79 @@
+{
+  "meta": {
+    "format": "k2uartbriage-blueprint-prompts",
+    "version": 1
+  },
+  "prompts": {
+    "recovery_overview": [
+      "K2 Recovery Overview",
+      "",
+      "Goal: Boot a known-good U-Boot into RAM (via FEL) and carefully re-flash firmware.",
+      "",
+      "High-level steps:",
+      "1) Enter FEL mode on the board",
+      "2) Use sunxi-fel on PC to load u-boot-sunxi-with-spl.bin into RAM",
+      "3) Interact with U-Boot via UART (this bridge)",
+      "4) Restore firmware using SAFE chunked writes + verification",
+      "",
+      "IMPORTANT:",
+      "- If the board has write-size limitations, avoid large single write operations.",
+      "- Always verify after writing."
+    ],
+
+    "fel_entry": [
+      "FEL Entry Notes",
+      "",
+      "Common FEL method (varies by board):",
+      "- Hold FEL/BOOT button (or short FEL pads)",
+      "- Apply power / reset",
+      "- Confirm from PC: sunxi-fel -l",
+      "",
+      "If FEL times out:",
+      "- Try different USB cable/port",
+      "- Try powered USB hub",
+      "- Remove other USB devices",
+      "- Try pressing FEL at power-on, not after."
+    ],
+
+    "uboot_ram_boot": [
+      "Boot U-Boot into RAM (non-destructive)",
+      "",
+      "You should be using a RAM boot method (does not write eMMC by itself).",
+      "Once U-Boot is running, you can use UART to check env + storage layout."
+    ],
+
+    "write_safety": [
+      "WRITE SAFETY (Critical)",
+      "",
+      "If someone used PhoenixSuit and the board refuses large writes:",
+      "- DO NOT attempt one huge write to the eMMC.",
+      "- Prefer smaller chunks (ex: 4MB/8MB) with verify between chunks.",
+      "",
+      "Also:",
+      "- Confirm target device: mmc dev 0",
+      "- Confirm offsets before writing",
+      "- Use read-back / checksum if possible"
+    ],
+
+    "ums_best_option": [
+      "Best Option: U-Boot UMS (USB Mass Storage)",
+      "",
+      "If U-Boot supports: ums 0 mmc 0",
+      "your PC will see the eMMC as a USB drive.",
+      "Then you can image/restore using standard tools (dd / Win32DiskImager).",
+      "",
+      "This is usually safer and more reliable than custom flash scripts."
+    ],
+
+    "gcode_help": [
+      "Preset Commands (gcode.json)",
+      "",
+      "Use !bp gcode to list groups and commands.",
+      "Examples:",
+      "- !bp gcode",
+      "- !bp gcode uboot",
+      "- !bp gcode uboot printenv",
+      "- !bp gcode fel sunxi_list"
+    ]
+  }
+}
